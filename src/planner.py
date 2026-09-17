@@ -43,7 +43,7 @@ class PlannerAgent:
     def explain(self, query: ParsedQuery, plan: list[str]) -> AgentResult:
         md = (
             f"Planner confidence **{query.confidence:.0%}**. "
-            f"Execution order: `{' → '.join(plan + ['critique', 'synthesize'])}` "
+            f"Execution order: `{' → '.join(plan + ['critique', 'judge', 'synthesize'])}` "
             "(fallback runs only if listing results are empty)."
         )
         return AgentResult(

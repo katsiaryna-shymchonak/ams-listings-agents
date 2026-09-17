@@ -2,7 +2,7 @@
 
 The app reads `listings.csv` and answers through a **blackboard pipeline**:
 
-`planner → specialists → fallback? → critique → synthesize`
+`planner → specialists → fallback? → critique → judge → synthesize`
 
 | Agent | Stage | Role |
 | --- | --- | --- |
@@ -20,19 +20,31 @@ The app reads `listings.csv` and answers through a **blackboard pipeline**:
 | `similar` | specialist | Alternatives to the last shortlist |
 | `clarify` | specialist | Asks for missing constraints |
 | `fallback` | recovery | Progressively relaxes filters |
-| `critique` | critique | Quality review of the turn |
+| `critique` | critique | Heuristic quality review |
+| `judge` | critique | Weighted rubric score for the turn |
 | `synthesize` | synthesize | Final briefing |
 
-## Extra capabilities
+## Judge rubric
 
-- Keyword search (`canal`, `terrace`, …)
-- Composite listing score + deal discount vs area median
-- Nearby neighbourhood suggestions
-- Stay-cost estimates (`for 3 nights`, `total budget 900`)
-- Cross-turn filter, shortlist, and watchlist memory
-- Downloadable markdown briefing from the chat UI
+Online (and offline against gold labels) the judge scores:
 
-## Run
+- **routing** — plan covers expected intents
+- **filters** — extracted constraints match the query / gold
+- **coverage** — specialists returned usable output (or fallback recovered)
+- **usefulness** — tables / maps / charts / shortlist / briefing
+- **efficiency** — plan width and fallback pressure
+
+## Offline evaluation
+
+```bash
+python scripts/eval_suite.py
+```
+
+Uses `eval/golden_queries.json` and writes:
+- `eval/latest_results.json` — machine-readable scores
+- `eval/REPORT.md` — human-readable summary (`python scripts/render_eval_report.py`)
+
+## Run the chat app
 
 ```bash
 python -m venv .venv

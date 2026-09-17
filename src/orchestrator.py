@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from .agents import AGENT_REGISTRY
 from .blackboard import Blackboard, ConversationState
@@ -17,12 +18,14 @@ class OrchestratorResponse:
     memory: ListingFilters | None
     conversation: ConversationState
     plan: list[str]
+    judgment: dict[str, Any] | None = None
 
 
 class Orchestrator:
     """
     Multi-stage pipeline:
-      parse → merge memory → plan → specialists → optional fallback → critique → synthesize
+      parse → merge memory → plan → specialists → optional fallback
+      → critique → judge → synthesize
     """
 
     def __init__(self, catalog: Catalog):
@@ -35,6 +38,7 @@ class Orchestrator:
         text: str,
         memory: ListingFilters | None = None,
         conversation: ConversationState | None = None,
+        eval_expected: dict[str, Any] | None = None,
     ) -> OrchestratorResponse:
         conversation = conversation or ConversationState(filters=memory)
         parsed = parse_query(text, self.catalog.neighbourhoods)
@@ -60,6 +64,8 @@ class Orchestrator:
             },
         )
         board.flags["watchlist"] = list(conversation.watchlist)
+        if eval_expected:
+            board.flags["eval_expected"] = eval_expected
         board.add(self.planner.explain(parsed, plan))
 
         for name in plan:
@@ -71,17 +77,17 @@ class Orchestrator:
         if needs_fallback(board):
             board.add(self.agents["fallback"].run(self.catalog, parsed, board))
 
-        # Always critique + synthesize for non-help-only turns with substance
         board.add(self.agents["critique"].run(self.catalog, parsed, board))
+        board.add(self.agents["judge"].run(self.catalog, parsed, board))
         board.add(self.agents["synthesize"].run(self.catalog, parsed, board))
 
         conversation.remember_turn(board)
-        # Persist watchlist even when remember_turn got filters-only updates
         if "watchlist" in board.flags and isinstance(board.flags["watchlist"], list):
             conversation.watchlist = list(board.flags["watchlist"])
         if parsed.help_requested and not parsed.filters.as_dict():
             conversation.filters = active_memory
 
+        judgment = board.flags.get("judgment")
         return OrchestratorResponse(
             query=parsed,
             results=board.results,
@@ -89,6 +95,7 @@ class Orchestrator:
             memory=conversation.filters,
             conversation=conversation,
             plan=plan,
+            judgment=judgment if isinstance(judgment, dict) else None,
         )
 
 

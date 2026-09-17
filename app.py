@@ -93,6 +93,8 @@ if "messages" not in st.session_state:
     ]
 if "conversation" not in st.session_state:
     st.session_state.conversation = ConversationState()
+if "last_judgment" not in st.session_state:
+    st.session_state.last_judgment = None
 
 with st.sidebar:
     st.header("Amsterdam listings")
@@ -108,13 +110,26 @@ with st.sidebar:
     st.caption(f"Watchlist ({len(st.session_state.conversation.watchlist)}): "
                + (", ".join(map(str, st.session_state.conversation.watchlist[:8])) or "empty"))
     st.caption(f"Turn {st.session_state.conversation.turn}")
+    judgment = st.session_state.last_judgment
+    if judgment:
+        st.metric(
+            "Last judge score",
+            f"{judgment.get('overall', 0):.0%}",
+            delta="PASS" if judgment.get("passed") else "NEEDS WORK",
+        )
+        scores = judgment.get("scores") or {}
+        st.caption(
+            " · ".join(f"{k} {v:.0%}" for k, v in scores.items())
+        )
     if st.button("Clear chat & memory", use_container_width=True):
         st.session_state.messages = [st.session_state.messages[0]]
         st.session_state.conversation = ConversationState()
+        st.session_state.last_judgment = None
         st.rerun()
     st.divider()
     st.write("Pipeline")
-    st.code("planner → specialists\n→ fallback?\n→ critique → synthesize", language=None)
+    st.code("planner → specialists\n→ fallback?\n→ critique → judge\n→ synthesize", language=None)
+    st.caption("Offline: `python scripts/eval_suite.py`")
     st.divider()
     st.write("Examples")
     for q in EXAMPLES:
@@ -123,9 +138,8 @@ with st.sidebar:
 
 st.title("Amsterdam listings multi-agent guide")
 st.write(
-    "Specialists now include **deal**, **guide**, **explain**, and **watchlist**, "
-    "on top of search / insights / compare / budget / host / similar, "
-    "coordinated through a blackboard pipeline."
+    "Blackboard pipeline with specialists (**deal**, **guide**, **explain**, **watchlist**, …) "
+    "plus meta-agents **critique** and **judge** that score each turn."
 )
 
 pending = st.session_state.pop("_pending", None)
@@ -159,17 +173,26 @@ if user_text:
 
     response = orch.handle(user_text, conversation=st.session_state.conversation)
     st.session_state.conversation = response.conversation
+    st.session_state.last_judgment = response.judgment
     export = briefing_markdown(response.results)
 
+    judge_bit = ""
+    if response.judgment:
+        judge_bit = (
+            f" Judge: **{response.judgment.get('overall', 0):.0%}** "
+            f"({'PASS' if response.judgment.get('passed') else 'NEEDS WORK'})."
+        )
     assistant_text = (
         f"Pipeline plan: **{' → '.join(response.plan)}**. "
-        f"Full route: **{' → '.join(response.trace)}**."
+        f"Full route: **{' → '.join(response.trace)}**.{judge_bit}"
     )
     with st.chat_message("assistant"):
         st.markdown(assistant_text)
-        synth = [r for r in response.results if r.agent == "synthesize"]
-        rest = [r for r in response.results if r.agent != "synthesize"]
-        for result in synth + rest:
+        preferred = {"synthesize", "judge"}
+        top = [r for r in response.results if r.agent in preferred]
+        top = sorted(top, key=lambda r: 0 if r.agent == "synthesize" else 1)
+        rest = [r for r in response.results if r.agent not in preferred]
+        for result in top + rest:
             render_result(result)
         st.caption("route: " + " → ".join(response.trace))
         st.caption(memory_caption(st.session_state.conversation.filters))
@@ -189,5 +212,6 @@ if user_text:
             "trace": response.trace,
             "plan": response.plan,
             "export": export,
+            "judgment": response.judgment,
         }
     )

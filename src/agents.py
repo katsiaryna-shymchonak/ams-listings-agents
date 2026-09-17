@@ -6,6 +6,7 @@ import pandas as pd
 
 from .blackboard import AgentResult, Blackboard
 from .catalog import Catalog, display_columns, highlight_lines
+from .judge import JudgeAgent
 from .nlu import ParsedQuery
 
 
@@ -53,6 +54,7 @@ class HelpAgent:
             "| similar | Alternatives to last shortlist |\n"
             "| fallback | Relax filters when empty |\n"
             "| critique | Quality review |\n"
+            "| judge | Rubric score for the turn |\n"
             "| synthesize | Final briefing |\n\n"
             "Examples:\n"
             "- `Find deals in De Pijp under 280 euros`\n"
@@ -60,7 +62,8 @@ class HelpAgent:
             "- `save top` then `show watchlist`\n"
             "- `explain 28871`\n"
             "- `Compare De Pijp and Westerpark`\n"
-            "- `Plan a 4-night trip with total budget 900`"
+            "- `Plan a 4-night trip with total budget 900`\n\n"
+            "Offline eval: `python scripts/eval_suite.py`"
         )
         return AgentResult(agent=self.name, title="How to use", markdown=md, stage="specialist")
 
@@ -719,7 +722,7 @@ class SynthesizeAgent:
 
         bullets: list[str] = []
         for result in board.results if board else []:
-            if result.agent in {"synthesize", "critique"}:
+            if result.agent in {"synthesize", "critique", "judge"}:
                 continue
             first = result.markdown.split("\n")[0].strip()
             bullets.append(f"- **{result.agent}**: {first[:180]}")
@@ -729,6 +732,16 @@ class SynthesizeAgent:
         critique = board.by_agent("critique") if board else None
         if critique and critique.extras.get("notes"):
             parts.append("Watch-outs: " + "; ".join(critique.extras["notes"][:3]))
+
+        judgment = board.flags.get("judgment") if board else None
+        if judgment:
+            parts.append(
+                f"Judge: **{judgment.get('overall', 0):.0%}** "
+                f"({'PASS' if judgment.get('passed') else 'NEEDS WORK'}) "
+                f"— routing {judgment.get('scores', {}).get('routing', 0):.0%}, "
+                f"filters {judgment.get('scores', {}).get('filters', 0):.0%}, "
+                f"coverage {judgment.get('scores', {}).get('coverage', 0):.0%}."
+            )
 
         if board and board.shortlist_ids:
             parts.append(
@@ -766,5 +779,6 @@ AGENT_REGISTRY: dict[str, Any] = {
     "similar": SimilarAgent(),
     "fallback": FallbackAgent(),
     "critique": CritiqueAgent(),
+    "judge": JudgeAgent(),
     "synthesize": SynthesizeAgent(),
 }
