@@ -397,6 +397,84 @@ class Catalog:
             pool = pool[pool["has_price"] & pool["price"].between(price_med * 0.7, price_med * 1.3)]
         return self.attach_score(pool).sort_values("score", ascending=False).head(limit)
 
+    def get_by_ids(self, listing_ids: list[int]) -> pd.DataFrame:
+        if not listing_ids:
+            return self.df.head(0)
+        order = {lid: i for i, lid in enumerate(listing_ids)}
+        rows = self.df[self.df["id"].isin(listing_ids)].copy()
+        rows["_ord"] = rows["id"].map(order)
+        return rows.sort_values("_ord").drop(columns=["_ord"])
+
+    def find_deals(self, filters: ListingFilters, max_discount: float = 0.0) -> tuple[pd.DataFrame, int]:
+        """Listings priced below their neighbourhood median (optional extra discount)."""
+        pool = self.apply(filters)
+        if pool.empty:
+            return pool, 0
+        medians = (
+            self.df[self.df["has_price"]]
+            .groupby("neighbourhood")["price"]
+            .median()
+            .rename("neigh_median")
+        )
+        out = pool.merge(medians, left_on="neighbourhood", right_index=True, how="left")
+        out = out[out["has_price"] & out["neigh_median"].notna()]
+        threshold = out["neigh_median"] * (1.0 - max_discount)
+        out = out[out["price"] <= threshold].copy()
+        out["discount_pct"] = ((1 - out["price"] / out["neigh_median"]) * 100).round(1)
+        out = self.attach_score(out)
+        out = out.sort_values(["discount_pct", "score"], ascending=[False, False])
+        total = int(len(out))
+        return out.head(filters.limit), total
+
+    def explain_listing(self, listing_id: int) -> dict[str, Any] | None:
+        row = self.df[self.df["id"] == listing_id]
+        if row.empty:
+            return None
+        item = row.iloc[0]
+        scored = self.attach_score(row).iloc[0]
+        neigh = item["neighbourhood"]
+        neigh_med = self.df[(self.df["neighbourhood"] == neigh) & self.df["has_price"]]["price"].median()
+        price = item["price"]
+        vs_med = None if pd.isna(price) or pd.isna(neigh_med) else float(price - neigh_med)
+        reasons: list[str] = []
+        if item["number_of_reviews"] >= 50:
+            reasons.append(f"strong review count ({int(item['number_of_reviews'])})")
+        elif item["number_of_reviews"] >= 10:
+            reasons.append(f"some social proof ({int(item['number_of_reviews'])} reviews)")
+        else:
+            reasons.append("limited reviews — treat ranking cautiously")
+        if pd.notna(vs_med):
+            if vs_med < 0:
+                reasons.append(f"priced {_fmt_delta(-vs_med)} below {neigh} median")
+            else:
+                reasons.append(f"priced {_fmt_delta(vs_med)} above {neigh} median")
+        if item["has_license"]:
+            reasons.append("has a listed license")
+        else:
+            reasons.append("no license string in the dataset")
+        if item["availability_365"] > 60:
+            reasons.append(f"availability looks open ({int(item['availability_365'])} days/year)")
+        if pd.notna(item["km_from_center"]) and item["km_from_center"] <= 2.5:
+            reasons.append(f"close to centre (~{item['km_from_center']:.1f} km)")
+        nearby = self.nearby_neighbourhoods(str(neigh), k=2) if pd.notna(neigh) else []
+        return {
+            "id": int(item["id"]),
+            "name": item["name"],
+            "neighbourhood": neigh,
+            "room_type": item["room_type"],
+            "price": None if pd.isna(price) else float(price),
+            "neigh_median": None if pd.isna(neigh_med) else float(neigh_med),
+            "score": float(scored["score"]),
+            "reviews": int(item["number_of_reviews"]),
+            "availability_365": int(item["availability_365"]),
+            "km_from_center": None if pd.isna(item["km_from_center"]) else float(item["km_from_center"]),
+            "has_license": bool(item["has_license"]),
+            "host_name": item["host_name"],
+            "reasons": reasons,
+            "nearby": nearby,
+            "row": row,
+        }
+
     def relax_filters(self, filters: ListingFilters) -> list[tuple[str, ListingFilters]]:
         """Progressively loosen constraints for recovery search."""
         steps: list[tuple[str, ListingFilters]] = []
@@ -432,7 +510,6 @@ class Catalog:
             f.min_reviews = None
             f.keywords = []
             steps.append(("drop review minimum", f))
-        # City-wide soft search as last resort
         soft = ListingFilters(
             max_price=base.max_price,
             sort=base.sort or "reviews",
@@ -445,6 +522,10 @@ class Catalog:
         )
         steps.append(("city-wide soft search", soft))
         return steps
+
+
+def _fmt_delta(value: float) -> str:
+    return f"€{value:,.0f}"
 
 
 def display_columns(df: pd.DataFrame, nights: int | None = None) -> pd.DataFrame:
@@ -461,6 +542,8 @@ def display_columns(df: pd.DataFrame, nights: int | None = None) -> pd.DataFrame
         "availability_365",
         "km_from_center",
         "score",
+        "discount_pct",
+        "neigh_median",
         "host_name",
         "has_license",
     ]
