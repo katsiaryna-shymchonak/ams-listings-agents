@@ -4,19 +4,21 @@ from pathlib import Path
 
 import streamlit as st
 
+from src.blackboard import ConversationState
 from src.catalog import Catalog, ListingFilters
 from src.orchestrator import Orchestrator
 
 st.set_page_config(page_title="Amsterdam Listings Agents", page_icon="🚲", layout="wide")
 
 EXAMPLES = [
-    "Find a canal apartment in De Pijp under 300 euros",
-    "Compare neighbourhoods by price",
-    "Recommend top 5 cheap private rooms near the center",
+    "Find a canal apartment in De Pijp under 300 euros for 3 nights",
+    "Compare De Pijp and Westerpark",
+    "Plan a 4-night trip with total budget 900",
+    "Recommend top 5 scored private rooms near the center",
     "Average price in Westerpark",
     "What does host Edwin list?",
     "Find listings between 150 and 250 euros with terrace",
-    "Show licensed apartments in Centrum-West",
+    "similar",
     "help",
 ]
 
@@ -28,8 +30,9 @@ def get_orchestrator() -> Orchestrator:
 
 
 def render_result(result) -> None:
+    stage = getattr(result, "stage", "specialist")
     st.markdown(f"#### {result.title}")
-    st.caption(f"agent `{result.agent}`")
+    st.caption(f"agent `{result.agent}` · stage `{stage}`")
     st.markdown(result.markdown)
     if result.chart is not None and not result.chart.empty:
         if result.chart_kind == "neigh_price":
@@ -60,16 +63,18 @@ if "messages" not in st.session_state:
         {
             "role": "assistant",
             "content": (
-                "Hi! Ask about Amsterdam listings — neighbourhood, budget, keywords like "
-                "`canal` / `terrace`, hosts, or market stats. Filters carry over across short follow-ups; "
-                "say `reset` to clear them."
+                "Hi! This is a multi-stage agent system (planner → specialists → "
+                "fallback → critique → synthesizer) over Amsterdam listings. "
+                "Try a search, a neighbourhood compare, or a trip budget. "
+                "Say `similar` after a shortlist, or `reset` to clear memory."
             ),
             "results": [],
             "trace": [],
+            "plan": [],
         }
     ]
-if "filter_memory" not in st.session_state:
-    st.session_state.filter_memory = None
+if "conversation" not in st.session_state:
+    st.session_state.conversation = ConversationState()
 
 with st.sidebar:
     st.header("Amsterdam listings")
@@ -79,14 +84,17 @@ with st.sidebar:
     c3, c4 = st.columns(2)
     c3.metric("Median", f"€{snap['median_price']:.0f}" if snap["median_price"] else "n/a")
     c4.metric("Licensed", f"{snap['licensed']:,}")
-    st.caption(memory_caption(st.session_state.filter_memory))
+    st.caption(memory_caption(st.session_state.conversation.filters))
+    if st.session_state.conversation.last_listing_ids:
+        st.caption("Shortlist: " + ", ".join(map(str, st.session_state.conversation.last_listing_ids[:6])))
+    st.caption(f"Turn {st.session_state.conversation.turn}")
     if st.button("Clear chat & memory", use_container_width=True):
         st.session_state.messages = [st.session_state.messages[0]]
-        st.session_state.filter_memory = None
+        st.session_state.conversation = ConversationState()
         st.rerun()
     st.divider()
-    st.write("Room types")
-    st.json(snap["room_types"])
+    st.write("Pipeline")
+    st.code("planner → specialists\n→ fallback?\n→ critique → synthesize", language=None)
     st.divider()
     st.write("Examples")
     for q in EXAMPLES:
@@ -95,37 +103,48 @@ with st.sidebar:
 
 st.title("Amsterdam listings multi-agent guide")
 st.write(
-    "Five agents over `listings.csv`: **search**, **insights**, **recommend**, **host**, **help**. "
-    "The orchestrator routes each turn and can call more than one agent."
+    "Twelve cooperating agents over `listings.csv`, coordinated through a blackboard. "
+    "Specialists handle search, insights, compare, budget, hosts, and similar listings; "
+    "meta-agents plan, recover, critique, and synthesize."
 )
 
 pending = st.session_state.pop("_pending", None)
-prompt = st.chat_input("Ask about neighbourhood, price, keywords, host, or the market…")
+prompt = st.chat_input("Ask about neighbourhood, budget, trip cost, compare, or similar…")
 user_text = pending or prompt
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        if msg.get("plan"):
+            st.caption("plan: " + " → ".join(msg["plan"]))
         for result in msg.get("results") or []:
+            # Keep planner/critique/synthesize visible but compact for older turns
             render_result(result)
         if msg.get("trace"):
             st.caption("route: " + " → ".join(msg["trace"]))
 
 if user_text:
-    st.session_state.messages.append({"role": "user", "content": user_text, "results": [], "trace": []})
+    st.session_state.messages.append(
+        {"role": "user", "content": user_text, "results": [], "trace": [], "plan": []}
+    )
     with st.chat_message("user"):
         st.markdown(user_text)
 
-    response = orch.handle(user_text, memory=st.session_state.filter_memory)
-    st.session_state.filter_memory = response.memory
+    response = orch.handle(user_text, conversation=st.session_state.conversation)
+    st.session_state.conversation = response.conversation
 
-    assistant_text = f"Agents used: **{', '.join(response.trace)}**."
+    assistant_text = (
+        f"Pipeline plan: **{' → '.join(response.plan)}**. "
+        f"Full route: **{' → '.join(response.trace)}**."
+    )
     with st.chat_message("assistant"):
         st.markdown(assistant_text)
-        for result in response.results:
+        synth = [r for r in response.results if r.agent == "synthesize"]
+        rest = [r for r in response.results if r.agent != "synthesize"]
+        for result in synth + rest:
             render_result(result)
         st.caption("route: " + " → ".join(response.trace))
-        st.caption(memory_caption(st.session_state.filter_memory))
+        st.caption(memory_caption(st.session_state.conversation.filters))
 
     st.session_state.messages.append(
         {
@@ -133,5 +152,6 @@ if user_text:
             "content": assistant_text,
             "results": response.results,
             "trace": response.trace,
+            "plan": response.plan,
         }
     )
