@@ -26,9 +26,14 @@ EXAMPLES = [
 
 
 @st.cache_resource
-def get_orchestrator() -> Orchestrator:
+def get_orchestrator(catalog_mtime: float) -> Orchestrator:
+    """catalog_mtime busts the cache when src/catalog.py changes (schema/API drift)."""
     csv_path = Path(__file__).resolve().parent / "listings.csv"
     return Orchestrator(Catalog.load(csv_path))
+
+
+def _catalog_mtime() -> float:
+    return (Path(__file__).resolve().parent / "src" / "catalog.py").stat().st_mtime
 
 
 def render_result(result) -> None:
@@ -64,8 +69,13 @@ def briefing_markdown(results: list) -> str:
     return "\n\n".join(chunks)
 
 
-orch = get_orchestrator()
+orch = get_orchestrator(_catalog_mtime())
 snap = orch.catalog.snapshot()
+# Recover from stale cache left over from before catalog_mtime busting existed.
+if "licensed" not in snap:
+    get_orchestrator.clear()
+    orch = get_orchestrator(_catalog_mtime())
+    snap = orch.catalog.snapshot()
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
@@ -91,7 +101,7 @@ with st.sidebar:
     c2.metric("With price", f"{snap['priced']:,}")
     c3, c4 = st.columns(2)
     c3.metric("Median", f"€{snap['median_price']:.0f}" if snap["median_price"] else "n/a")
-    c4.metric("Licensed", f"{snap['licensed']:,}")
+    c4.metric("Licensed", f"{snap.get('licensed', 0):,}")
     st.caption(memory_caption(st.session_state.conversation.filters))
     if st.session_state.conversation.last_listing_ids:
         st.caption("Shortlist: " + ", ".join(map(str, st.session_state.conversation.last_listing_ids[:6])))
