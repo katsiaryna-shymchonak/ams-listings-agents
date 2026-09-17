@@ -11,13 +11,15 @@ from src.orchestrator import Orchestrator
 st.set_page_config(page_title="Amsterdam Listings Agents", page_icon="🚲", layout="wide")
 
 EXAMPLES = [
+    "Find deals in De Pijp under 280 euros",
+    "Guide to Westerpark",
     "Find a canal apartment in De Pijp under 300 euros for 3 nights",
     "Compare De Pijp and Westerpark",
     "Plan a 4-night trip with total budget 900",
     "Recommend top 5 scored private rooms near the center",
-    "Average price in Westerpark",
-    "What does host Edwin list?",
-    "Find listings between 150 and 250 euros with terrace",
+    "save top",
+    "show watchlist",
+    "explain top",
     "similar",
     "help",
 ]
@@ -55,6 +57,13 @@ def memory_caption(memory: ListingFilters | None) -> str:
     return "Remembered: " + ", ".join(f"{k}={v}" for k, v in data.items())
 
 
+def briefing_markdown(results: list) -> str:
+    chunks = []
+    for result in results:
+        chunks.append(f"## {result.title} (`{result.agent}`)\n\n{result.markdown}")
+    return "\n\n".join(chunks)
+
+
 orch = get_orchestrator()
 snap = orch.catalog.snapshot()
 
@@ -63,10 +72,9 @@ if "messages" not in st.session_state:
         {
             "role": "assistant",
             "content": (
-                "Hi! This is a multi-stage agent system (planner → specialists → "
-                "fallback → critique → synthesizer) over Amsterdam listings. "
-                "Try a search, a neighbourhood compare, or a trip budget. "
-                "Say `similar` after a shortlist, or `reset` to clear memory."
+                "Hi! Multi-stage agents over Amsterdam listings: deals, guides, watchlists, "
+                "explanations, search, compare, and trip budgets. Try `Find deals in De Pijp`, "
+                "`Guide to Westerpark`, or `save top` after a shortlist."
             ),
             "results": [],
             "trace": [],
@@ -87,6 +95,8 @@ with st.sidebar:
     st.caption(memory_caption(st.session_state.conversation.filters))
     if st.session_state.conversation.last_listing_ids:
         st.caption("Shortlist: " + ", ".join(map(str, st.session_state.conversation.last_listing_ids[:6])))
+    st.caption(f"Watchlist ({len(st.session_state.conversation.watchlist)}): "
+               + (", ".join(map(str, st.session_state.conversation.watchlist[:8])) or "empty"))
     st.caption(f"Turn {st.session_state.conversation.turn}")
     if st.button("Clear chat & memory", use_container_width=True):
         st.session_state.messages = [st.session_state.messages[0]]
@@ -103,13 +113,13 @@ with st.sidebar:
 
 st.title("Amsterdam listings multi-agent guide")
 st.write(
-    "Twelve cooperating agents over `listings.csv`, coordinated through a blackboard. "
-    "Specialists handle search, insights, compare, budget, hosts, and similar listings; "
-    "meta-agents plan, recover, critique, and synthesize."
+    "Specialists now include **deal**, **guide**, **explain**, and **watchlist**, "
+    "on top of search / insights / compare / budget / host / similar, "
+    "coordinated through a blackboard pipeline."
 )
 
 pending = st.session_state.pop("_pending", None)
-prompt = st.chat_input("Ask about neighbourhood, budget, trip cost, compare, or similar…")
+prompt = st.chat_input("Ask about deals, guides, watchlist, budget, compare…")
 user_text = pending or prompt
 
 for msg in st.session_state.messages:
@@ -118,10 +128,17 @@ for msg in st.session_state.messages:
         if msg.get("plan"):
             st.caption("plan: " + " → ".join(msg["plan"]))
         for result in msg.get("results") or []:
-            # Keep planner/critique/synthesize visible but compact for older turns
             render_result(result)
         if msg.get("trace"):
             st.caption("route: " + " → ".join(msg["trace"]))
+        if msg.get("export"):
+            st.download_button(
+                "Download turn briefing",
+                data=msg["export"],
+                file_name="ams-listings-briefing.md",
+                mime="text/markdown",
+                key=f"dl-{hash(msg['export']) % 10_000_000}",
+            )
 
 if user_text:
     st.session_state.messages.append(
@@ -132,6 +149,7 @@ if user_text:
 
     response = orch.handle(user_text, conversation=st.session_state.conversation)
     st.session_state.conversation = response.conversation
+    export = briefing_markdown(response.results)
 
     assistant_text = (
         f"Pipeline plan: **{' → '.join(response.plan)}**. "
@@ -145,6 +163,13 @@ if user_text:
             render_result(result)
         st.caption("route: " + " → ".join(response.trace))
         st.caption(memory_caption(st.session_state.conversation.filters))
+        st.download_button(
+            "Download turn briefing",
+            data=export,
+            file_name="ams-listings-briefing.md",
+            mime="text/markdown",
+            key=f"dl-live-{st.session_state.conversation.turn}",
+        )
 
     st.session_state.messages.append(
         {
@@ -153,5 +178,6 @@ if user_text:
             "results": response.results,
             "trace": response.trace,
             "plan": response.plan,
+            "export": export,
         }
     )

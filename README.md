@@ -12,6 +12,10 @@ The app reads `listings.csv` and answers through a **blackboard pipeline**:
 | `insights` | specialist | Market stats + nearby areas |
 | `compare` | specialist | Side-by-side neighbourhoods |
 | `budget` | specialist | Trip cost for N nights / total budget |
+| `deal` | specialist | Below-neighbourhood-median bargains |
+| `guide` | specialist | Neighbourhood primer + local snapshot |
+| `explain` | specialist | Why a listing ranks the way it does |
+| `watchlist` | specialist | Save / show / clear pinned listing ids |
 | `host` | specialist | Host profile and licenses |
 | `similar` | specialist | Alternatives to the last shortlist |
 | `clarify` | specialist | Asks for missing constraints |
@@ -22,10 +26,11 @@ The app reads `listings.csv` and answers through a **blackboard pipeline**:
 ## Extra capabilities
 
 - Keyword search (`canal`, `terrace`, …)
-- Composite listing score
+- Composite listing score + deal discount vs area median
 - Nearby neighbourhood suggestions
 - Stay-cost estimates (`for 3 nights`, `total budget 900`)
-- Cross-turn filter + shortlist memory (`similar`, `same filters`, `reset`)
+- Cross-turn filter, shortlist, and watchlist memory
+- Downloadable markdown briefing from the chat UI
 
 ## Run
 
@@ -40,9 +45,12 @@ Open http://localhost:8501
 
 ## Example questions
 
-- Find a canal apartment in De Pijp under 300 euros for 3 nights
+- Find deals in De Pijp under 280 euros
+- Guide to Westerpark
 - Compare De Pijp and Westerpark
 - Plan a 4-night trip with total budget 900
-- Recommend top 5 scored private rooms near the center
+- save top
+- show watchlist
+- explain 28871
 - similar
 - help
