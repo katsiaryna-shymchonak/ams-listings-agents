@@ -1,0 +1,123 @@
+[
+  {
+    "id": "search_canal_pijp",
+    "query": "Find a canal apartment in De Pijp under 300 euros for 3 nights",
+    "intents": ["search"],
+    "filters": {
+      "neighbourhood": "De Pijp - Rivierenbuurt",
+      "room_type": "Entire home/apt",
+      "max_price": 300,
+      "trip_nights": 3,
+      "keywords": ["canal"]
+    }
+  },
+  {
+    "id": "deal_pijp",
+    "query": "Find deals in De Pijp under 280 euros",
+    "intents": ["deal"],
+    "filters": {
+      "neighbourhood": "De Pijp - Rivierenbuurt",
+      "max_price": 280
+    }
+  },
+  {
+    "id": "compare_areas",
+    "query": "Compare De Pijp and Westerpark",
+    "intents": ["compare"],
+    "filters": {}
+  },
+  {
+    "id": "budget_trip",
+    "query": "Plan a 4-night trip with total budget 900",
+    "intents": ["budget"],
+    "filters": {
+      "trip_nights": 4,
+      "total_budget": 900.0
+    }
+  },
+  {
+    "id": "recommend_scored",
+    "query": "Recommend top 5 scored private rooms near the center",
+    "intents": ["recommend"],
+    "filters": {
+      "room_type": "Private room",
+      "near_center": true,
+      "limit": 5,
+      "sort": "score"
+    }
+  },
+  {
+    "id": "guide_westerpark",
+    "query": "Guide to Westerpark",
+    "intents": ["guide"],
+    "filters": {
+      "neighbourhood": "Westerpark"
+    }
+  },
+  {
+    "id": "insights_average",
+    "query": "Average price in Westerpark",
+    "intents": ["insights"],
+    "filters": {
+      "neighbourhood": "Westerpark"
+    }
+  },
+  {
+    "id": "host_edwin",
+    "query": "What does host Edwin list?",
+    "intents": ["host"],
+    "filters": {
+      "host_name": "Edwin"
+    }
+  },
+  {
+    "id": "explain_id",
+    "query": "explain 28871",
+    "intents": ["explain"],
+    "filters": {}
+  },
+  {
+    "id": "help",
+    "query": "help",
+    "intents": ["help"],
+    "filters": {}
+  },
+  {
+    "id": "clarify_short",
+    "query": "xyz",
+    "intents": ["clarify"],
+    "filters": {}
+  },
+  {
+    "id": "licensed_centrum",
+    "query": "Show licensed apartments in Centrum-West",
+    "intents": ["search"],
+    "filters": {
+      "neighbourhood": "Centrum-West",
+      "room_type": "Entire home/apt",
+      "licensed_only": true
+    }
+  },
+  {
+    "id": "terrace_range",
+    "query": "Find listings between 150 and 250 euros with terrace",
+    "intents": ["search"],
+    "filters": {
+      "min_price": 150,
+      "max_price": 250,
+      "keywords": ["terrace"]
+    }
+  },
+  {
+    "id": "watchlist_show",
+    "query": "show watchlist",
+    "intents": ["watchlist"],
+    "filters": {}
+  },
+  {
+    "id": "city_compare_prices",
+    "query": "Compare neighbourhoods by price",
+    "intents": ["insights"],
+    "filters": {}
+  }
+]

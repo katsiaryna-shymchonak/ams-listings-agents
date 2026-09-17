@@ -1,0 +1,464 @@
+{
+  "threshold": 0.7,
+  "passed": 15,
+  "total": 15,
+  "pass_rate": 1.0,
+  "cases": [
+    {
+      "id": "search_canal_pijp",
+      "query": "Find a canal apartment in De Pijp under 300 euros for 3 nights",
+      "plan": [
+        "insights",
+        "search"
+      ],
+      "trace": [
+        "planner",
+        "insights",
+        "search",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.968,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 1.0,
+        "coverage": 0.95,
+        "usefulness": 0.85,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['search'].",
+        "[filters] All 5 expected filters matched.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes map points."
+      ]
+    },
+    {
+      "id": "deal_pijp",
+      "query": "Find deals in De Pijp under 280 euros",
+      "plan": [
+        "insights",
+        "deal"
+      ],
+      "trace": [
+        "planner",
+        "insights",
+        "deal",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.968,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 1.0,
+        "coverage": 0.95,
+        "usefulness": 0.85,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['deal'].",
+        "[filters] All 2 expected filters matched.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes map points."
+      ]
+    },
+    {
+      "id": "compare_areas",
+      "query": "Compare De Pijp and Westerpark",
+      "plan": [
+        "compare"
+      ],
+      "trace": [
+        "planner",
+        "compare",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.84,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 0.7,
+        "coverage": 0.95,
+        "usefulness": 0.5,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['compare'].",
+        "[filters] No filter expectations; query stayed open-ended.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes a chart."
+      ]
+    },
+    {
+      "id": "budget_trip",
+      "query": "Plan a 4-night trip with total budget 900",
+      "plan": [
+        "budget"
+      ],
+      "trace": [
+        "planner",
+        "budget",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.945,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 1.0,
+        "coverage": 0.95,
+        "usefulness": 0.7,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['budget'].",
+        "[filters] All 2 expected filters matched.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes map points."
+      ]
+    },
+    {
+      "id": "recommend_scored",
+      "query": "Recommend top 5 scored private rooms near the center",
+      "plan": [
+        "recommend"
+      ],
+      "trace": [
+        "planner",
+        "recommend",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.945,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 1.0,
+        "coverage": 0.95,
+        "usefulness": 0.7,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['recommend'].",
+        "[filters] All 4 expected filters matched.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes map points."
+      ]
+    },
+    {
+      "id": "guide_westerpark",
+      "query": "Guide to Westerpark",
+      "plan": [
+        "guide"
+      ],
+      "trace": [
+        "planner",
+        "guide",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.915,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 1.0,
+        "coverage": 0.95,
+        "usefulness": 0.5,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['guide'].",
+        "[filters] All 1 expected filters matched.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes a chart."
+      ]
+    },
+    {
+      "id": "insights_average",
+      "query": "Average price in Westerpark",
+      "plan": [
+        "insights"
+      ],
+      "trace": [
+        "planner",
+        "insights",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.915,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 1.0,
+        "coverage": 0.95,
+        "usefulness": 0.5,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['insights'].",
+        "[filters] All 1 expected filters matched.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes a chart."
+      ]
+    },
+    {
+      "id": "host_edwin",
+      "query": "What does host Edwin list?",
+      "plan": [
+        "host"
+      ],
+      "trace": [
+        "planner",
+        "host",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.945,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 1.0,
+        "coverage": 0.95,
+        "usefulness": 0.7,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['host'].",
+        "[filters] All 1 expected filters matched.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes map points."
+      ]
+    },
+    {
+      "id": "explain_id",
+      "query": "explain 28871",
+      "plan": [
+        "explain"
+      ],
+      "trace": [
+        "planner",
+        "explain",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.87,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 0.7,
+        "coverage": 0.95,
+        "usefulness": 0.7,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['explain'].",
+        "[filters] No filter expectations; query stayed open-ended.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes map points."
+      ]
+    },
+    {
+      "id": "help",
+      "query": "help",
+      "plan": [
+        "help"
+      ],
+      "trace": [
+        "planner",
+        "help",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.765,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 0.7,
+        "coverage": 0.95,
+        "usefulness": 0.0,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['help'].",
+        "[filters] No filter expectations; query stayed open-ended.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Limited artifacts beyond text.",
+        "[efficiency] Compact plan (1 specialists)."
+      ]
+    },
+    {
+      "id": "clarify_short",
+      "query": "xyz",
+      "plan": [
+        "clarify"
+      ],
+      "trace": [
+        "planner",
+        "clarify",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.87,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 0.7,
+        "coverage": 0.95,
+        "usefulness": 0.7,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['clarify'].",
+        "[filters] No filter expectations; query stayed open-ended.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Ambiguous query correctly deferred to clarify.",
+        "[efficiency] Compact plan (1 specialists)."
+      ]
+    },
+    {
+      "id": "licensed_centrum",
+      "query": "Show licensed apartments in Centrum-West",
+      "plan": [
+        "insights",
+        "search"
+      ],
+      "trace": [
+        "planner",
+        "insights",
+        "search",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.968,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 1.0,
+        "coverage": 0.95,
+        "usefulness": 0.85,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['search'].",
+        "[filters] All 3 expected filters matched.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes map points."
+      ]
+    },
+    {
+      "id": "terrace_range",
+      "query": "Find listings between 150 and 250 euros with terrace",
+      "plan": [
+        "search"
+      ],
+      "trace": [
+        "planner",
+        "search",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.945,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 1.0,
+        "coverage": 0.95,
+        "usefulness": 0.7,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['search'].",
+        "[filters] All 3 expected filters matched.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes map points."
+      ]
+    },
+    {
+      "id": "watchlist_show",
+      "query": "show watchlist",
+      "plan": [
+        "watchlist"
+      ],
+      "trace": [
+        "planner",
+        "watchlist",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.765,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 0.7,
+        "coverage": 0.95,
+        "usefulness": 0.0,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['watchlist'].",
+        "[filters] No filter expectations; query stayed open-ended.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Limited artifacts beyond text.",
+        "[efficiency] Compact plan (1 specialists)."
+      ]
+    },
+    {
+      "id": "city_compare_prices",
+      "query": "Compare neighbourhoods by price",
+      "plan": [
+        "insights"
+      ],
+      "trace": [
+        "planner",
+        "insights",
+        "critique",
+        "judge",
+        "synthesize"
+      ],
+      "overall": 0.84,
+      "passed": true,
+      "scores": {
+        "routing": 1.0,
+        "filters": 0.7,
+        "coverage": 0.95,
+        "usefulness": 0.5,
+        "efficiency": 1.0
+      },
+      "notes": [
+        "[routing] Plan covered expected intents ['insights'].",
+        "[filters] No filter expectations; query stayed open-ended.",
+        "[coverage] Specialists produced substantive markdown.",
+        "[usefulness] Includes a result table.",
+        "[usefulness] Includes a chart."
+      ]
+    }
+  ]
+}
