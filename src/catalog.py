@@ -89,7 +89,9 @@ class ListingFilters:
     licensed_only: bool = False
     keywords: list[str] = field(default_factory=list)
     near_center: bool = False
-    sort: str = "reviews"  # reviews | price | availability | recent | value | center
+    trip_nights: int | None = None
+    total_budget: float | None = None
+    sort: str = "reviews"  # reviews | price | availability | recent | value | center | score
     limit: int = 8
 
     def as_dict(self) -> dict[str, Any]:
@@ -104,11 +106,15 @@ class ListingFilters:
             out[key] = value
         return out
 
+    def copy(self) -> ListingFilters:
+        return ListingFilters(**{k: (list(v) if isinstance(v, list) else v) for k, v in self.__dict__.items()})
+
 
 @dataclass
 class Catalog:
     df: pd.DataFrame
     neighbourhoods: list[str] = field(default_factory=list)
+    _centroids: pd.DataFrame | None = field(default=None, repr=False)
 
     @classmethod
     def load(cls, csv_path: Path | None = None) -> Catalog:
@@ -133,7 +139,22 @@ class Catalog:
         dlon = (lon - CENTER_LON) * 111.0 * 0.6  # cos(~52°)
         df["km_from_center"] = (dlat**2 + dlon**2) ** 0.5
         neighbourhoods = sorted(df["neighbourhood"].dropna().unique().tolist())
-        return cls(df=df, neighbourhoods=neighbourhoods)
+        catalog = cls(df=df, neighbourhoods=neighbourhoods)
+        catalog._centroids = catalog._build_centroids()
+        return catalog
+
+    def _build_centroids(self) -> pd.DataFrame:
+        return (
+            self.df.groupby("neighbourhood")
+            .agg(lat=("latitude", "mean"), lon=("longitude", "mean"), listings=("id", "count"))
+            .reset_index()
+        )
+
+    @property
+    def centroids(self) -> pd.DataFrame:
+        if not hasattr(self, "_centroids") or self._centroids is None:
+            self._centroids = self._build_centroids()
+        return self._centroids
 
     def snapshot(self) -> dict[str, Any]:
         priced = self.df[self.df["has_price"]]
@@ -172,6 +193,9 @@ class Catalog:
             out = out[out["host_name"].str.casefold().str.contains(needle, na=False)]
         if filters.licensed_only:
             out = out[out["has_license"]]
+        if filters.total_budget is not None and filters.trip_nights:
+            nightly_cap = filters.total_budget / max(filters.trip_nights, 1)
+            out = out[out["has_price"] & (out["price"] <= nightly_cap)]
         for kw in filters.keywords:
             needle = kw.casefold()
             out = out[out["name_lc"].str.contains(needle, na=False, regex=False)]
@@ -187,6 +211,9 @@ class Catalog:
             return df.sort_values("last_review", ascending=False, na_position="last")
         if sort == "center":
             return df.sort_values(["km_from_center", "number_of_reviews"], ascending=[True, False])
+        if sort == "score":
+            scored = self.attach_score(df)
+            return scored.sort_values("score", ascending=False)
         if sort == "value":
             priced = df.copy()
             priced["_value"] = priced["number_of_reviews"] / priced["price"].clip(lower=1)
@@ -287,6 +314,7 @@ class Catalog:
             "available": "availability",
             "value": "value",
             "center": "center",
+            "score": "score",
         }
         f = ListingFilters(**{**filters.__dict__, "sort": sort_map.get(mode, "reviews")})
         if mode == "center":
@@ -301,39 +329,174 @@ class Catalog:
                 total = int(len(pool))
         return pool.head(filters.limit), total
 
+    def attach_score(self, df: pd.DataFrame) -> pd.DataFrame:
+        out = df.copy()
+        if out.empty:
+            out["score"] = pd.Series(dtype=float)
+            return out
+        reviews = out["number_of_reviews"].fillna(0)
+        price = out["price"]
+        avail = out["availability_365"].fillna(0)
+        dist = out["km_from_center"].fillna(out["km_from_center"].median() if out["km_from_center"].notna().any() else 1)
+        review_n = reviews / max(reviews.max(), 1)
+        price_n = 1 - (price.fillna(price.median() if price.notna().any() else 0) / max(price.max(), 1))
+        price_n = price_n.fillna(0.3)
+        avail_n = avail / max(avail.max(), 1)
+        dist_n = 1 - (dist / max(dist.max(), 1))
+        license_n = out["has_license"].astype(float)
+        out["score"] = (
+            0.35 * review_n + 0.25 * price_n + 0.15 * avail_n + 0.15 * dist_n + 0.10 * license_n
+        ).round(3)
+        return out
 
-def display_columns(df: pd.DataFrame) -> pd.DataFrame:
+    def attach_stay_cost(self, df: pd.DataFrame, nights: int) -> pd.DataFrame:
+        out = df.copy()
+        out["trip_nights"] = nights
+        out["est_stay_cost"] = out["price"].map(
+            lambda p: None if pd.isna(p) else round(float(p) * nights, 0)
+        )
+        return out
+
+    def nearby_neighbourhoods(self, neighbourhood: str, k: int = 3) -> list[tuple[str, float]]:
+        cents = self.centroids
+        row = cents[cents["neighbourhood"] == neighbourhood]
+        if row.empty:
+            return []
+        lat, lon = float(row.iloc[0]["lat"]), float(row.iloc[0]["lon"])
+        others = cents[cents["neighbourhood"] != neighbourhood].copy()
+        dlat = (others["lat"] - lat) * 111.0
+        dlon = (others["lon"] - lon) * 111.0 * 0.6
+        others["km"] = (dlat**2 + dlon**2) ** 0.5
+        top = others.sort_values("km").head(k)
+        return [(r.neighbourhood, round(float(r.km), 2)) for r in top.itertuples()]
+
+    def compare_neighbourhoods(self, left: str, right: str) -> pd.DataFrame:
+        rows = []
+        for name in (left, right):
+            stats = self.neighbourhood_stats(name)
+            if stats.empty:
+                rows.append({"neighbourhood": name, "listings": 0})
+                continue
+            r = stats.iloc[0].to_dict()
+            nearby = self.nearby_neighbourhoods(name, k=2)
+            r["nearby"] = ", ".join(f"{n} ({km}km)" for n, km in nearby)
+            rows.append(r)
+        return pd.DataFrame(rows)
+
+    def similar_listings(self, listing_ids: list[int], limit: int = 8) -> pd.DataFrame:
+        seeds = self.df[self.df["id"].isin(listing_ids)]
+        if seeds.empty:
+            return self.df.head(0)
+        room = seeds["room_type"].mode().iloc[0]
+        neighs = seeds["neighbourhood"].dropna().unique().tolist()
+        price_med = seeds["price"].median()
+        pool = self.df[~self.df["id"].isin(listing_ids) & (self.df["room_type"] == room)]
+        if neighs:
+            pool = pool[pool["neighbourhood"].isin(neighs)]
+        if pd.notna(price_med):
+            pool = pool[pool["has_price"] & pool["price"].between(price_med * 0.7, price_med * 1.3)]
+        return self.attach_score(pool).sort_values("score", ascending=False).head(limit)
+
+    def relax_filters(self, filters: ListingFilters) -> list[tuple[str, ListingFilters]]:
+        """Progressively loosen constraints for recovery search."""
+        steps: list[tuple[str, ListingFilters]] = []
+        base = filters.copy()
+
+        if base.keywords:
+            f = base.copy()
+            f.keywords = []
+            steps.append(("drop keywords", f))
+        if base.max_price is not None:
+            f = base.copy()
+            f.keywords = []
+            f.max_price = round(base.max_price * 1.25)
+            steps.append((f"raise max price to €{f.max_price:.0f}", f))
+        if base.neighbourhood:
+            nearby = self.nearby_neighbourhoods(base.neighbourhood, k=1)
+            if nearby:
+                f = base.copy()
+                f.keywords = []
+                f.neighbourhood = nearby[0][0]
+                if base.max_price is not None:
+                    f.max_price = round(base.max_price * 1.25)
+                steps.append((f"try nearby {nearby[0][0]} (~{nearby[0][1]}km)", f))
+        if base.room_type:
+            f = base.copy()
+            f.keywords = []
+            f.room_type = None
+            if base.max_price is not None:
+                f.max_price = round(base.max_price * 1.25)
+            steps.append(("drop room type constraint", f))
+        if base.min_reviews:
+            f = base.copy()
+            f.min_reviews = None
+            f.keywords = []
+            steps.append(("drop review minimum", f))
+        # City-wide soft search as last resort
+        soft = ListingFilters(
+            max_price=base.max_price,
+            sort=base.sort or "reviews",
+            limit=base.limit,
+            available_only=base.available_only,
+            licensed_only=base.licensed_only,
+            near_center=base.near_center,
+            trip_nights=base.trip_nights,
+            total_budget=base.total_budget,
+        )
+        steps.append(("city-wide soft search", soft))
+        return steps
+
+
+def display_columns(df: pd.DataFrame, nights: int | None = None) -> pd.DataFrame:
     cols = [
         "id",
         "name",
         "neighbourhood",
         "room_type",
         "price",
+        "est_stay_cost",
+        "trip_nights",
         "minimum_nights",
         "number_of_reviews",
         "availability_365",
         "km_from_center",
+        "score",
         "host_name",
         "has_license",
     ]
-    present = [c for c in cols if c in df.columns]
-    out = df[present].copy()
+    work = df
+    if nights and "est_stay_cost" not in work.columns:
+        work = work.copy()
+        work["trip_nights"] = nights
+        work["est_stay_cost"] = work["price"].map(
+            lambda p: None if pd.isna(p) else round(float(p) * nights, 0)
+        )
+    present = [c for c in cols if c in work.columns]
+    out = work[present].copy()
     if "price" in out.columns:
         out["price"] = out["price"].map(lambda x: None if pd.isna(x) else round(float(x), 0))
     if "km_from_center" in out.columns:
         out["km_from_center"] = out["km_from_center"].round(2)
     if "has_license" in out.columns:
         out["has_license"] = out["has_license"].map(lambda x: "yes" if x else "no")
+    if "score" in out.columns:
+        out["score"] = out["score"].round(3)
     return out
 
 
-def highlight_lines(df: pd.DataFrame, limit: int = 3) -> list[str]:
+def highlight_lines(df: pd.DataFrame, limit: int = 3, nights: int | None = None) -> list[str]:
     lines: list[str] = []
     for _, row in df.head(limit).iterrows():
         price = "n/a" if pd.isna(row.get("price")) else f"€{float(row['price']):.0f}"
         reviews = int(row.get("number_of_reviews") or 0)
+        extra = ""
+        if nights and pd.notna(row.get("price")):
+            extra = f" · ~€{float(row['price']) * nights:.0f} for {nights} nights"
+        elif "est_stay_cost" in row and pd.notna(row.get("est_stay_cost")):
+            extra = f" · ~€{float(row['est_stay_cost']):.0f} stay"
+        score = f" · score {row['score']:.2f}" if "score" in row and pd.notna(row.get("score")) else ""
         lines.append(
             f"- **{row['name']}** · {row['neighbourhood']} · {row['room_type']} · "
-            f"{price}/night · {reviews} reviews"
+            f"{price}/night · {reviews} reviews{extra}{score}"
         )
     return lines
