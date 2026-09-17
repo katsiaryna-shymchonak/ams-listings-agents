@@ -19,20 +19,25 @@ class PlannerAgent:
                 steps.append(intent)
 
         # Enrichment: market context alongside listing work
-        if any(i in steps for i in ("search", "recommend", "budget")) and "insights" not in steps:
+        if any(i in steps for i in ("search", "recommend", "budget", "deal")) and "insights" not in steps:
             if query.filters.neighbourhood or query.filters.neighbourhood_group:
                 steps.insert(0, "insights")
 
+        # Watchlist / explain / guide should stay focused
+        if "watchlist" in steps:
+            steps = [s for s in steps if s in {"watchlist", "insights"} or s == "watchlist"]
+            steps = ["watchlist"]
+        if "explain" in steps and len(steps) > 1:
+            steps = ["explain"]
+        if "guide" in steps and "compare" not in steps:
+            steps = ["guide"]
+
         if query.want_similar and "similar" not in steps:
             steps.append("similar")
-        if query.want_similar and not has_shortlist and "search" not in steps:
-            # similar alone without history → still allow; agent will explain
-            pass
 
         if not steps:
             steps = ["insights"]
 
-        # Meta stages always appended by orchestrator: fallback?, critique, synthesize
         return steps
 
     def explain(self, query: ParsedQuery, plan: list[str]) -> AgentResult:
@@ -51,7 +56,7 @@ class PlannerAgent:
 
 
 def needs_fallback(board: Blackboard) -> bool:
-    listing_agents = {"search", "recommend", "budget", "similar"}
+    listing_agents = {"search", "recommend", "budget", "similar", "deal"}
     ran = [r for r in board.results if r.agent in listing_agents]
     if not ran:
         return False

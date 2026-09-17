@@ -65,6 +65,7 @@ class ConversationState:
     last_listing_ids: list[int] = field(default_factory=list)
     last_neighbourhoods: list[str] = field(default_factory=list)
     last_intents: list[str] = field(default_factory=list)
+    watchlist: list[int] = field(default_factory=list)
     turn: int = 0
 
     def remember_turn(self, board: Blackboard) -> None:
@@ -78,3 +79,6 @@ class ConversationState:
         elif board.query.compare_targets:
             self.last_neighbourhoods = list(board.query.compare_targets)
         self.last_intents = list(board.plan)
+        wl = board.flags.get("watchlist")
+        if isinstance(wl, list):
+            self.watchlist = list(wl)

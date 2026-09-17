@@ -90,6 +90,9 @@ class ParsedQuery:
     help_requested: bool = False
     want_similar: bool = False
     want_clarification: bool = False
+    explain_id: int | None = None
+    watchlist_action: str | None = None  # save | show | clear | save_top
+    watchlist_ids: list[int] = field(default_factory=list)
     confidence: float = 1.0
 
 
@@ -188,6 +191,42 @@ def parse_query(text: str, neighbourhoods: list[str]) -> ParsedQuery:
         q.want_similar = True
         q.intents.append("similar")
 
+    # Watchlist commands
+    if re.search(r"\b(clear watchlist|empty watchlist|reset watchlist)\b", lower):
+        q.watchlist_action = "clear"
+        q.intents.append("watchlist")
+    elif re.search(r"\b(show watchlist|my watchlist|saved listings|watchlist)\b", lower):
+        q.watchlist_action = "show"
+        q.intents.append("watchlist")
+    elif re.search(r"\b(save top|pin top|watch top|save first)\b", lower):
+        q.watchlist_action = "save_top"
+        q.intents.append("watchlist")
+    else:
+        save_m = re.search(
+            r"\b(?:save|pin|watch|add)\s+(?:listing\s+)?((?:\d{4,}(?:\s|,|and|&)+)+|\d{4,})\b",
+            text,
+            re.I,
+        )
+        if save_m:
+            ids = [int(x) for x in re.findall(r"\d{4,}", save_m.group(1))]
+            if ids:
+                q.watchlist_action = "save"
+                q.watchlist_ids = ids
+                q.intents.append("watchlist")
+
+    explain_m = re.search(r"\b(?:explain|why)\s+(?:listing\s+)?(\d{4,})\b", text, re.I)
+    if explain_m:
+        q.explain_id = int(explain_m.group(1))
+        q.intents.append("explain")
+    elif re.search(r"\bexplain\s+(?:this|that|top|first)\b", lower):
+        q.intents.append("explain")
+
+    if re.search(r"\bdeals?\b|\bbargains?\b|below median|undervalued|good value deals\b", lower):
+        q.intents.append("deal")
+
+    if re.search(r"\bguide\b|tell me about|what(?:'s| is) .+ like\b|neighbourhood guide\b", lower):
+        q.intents.append("guide")
+
     # Explicit A vs B compare
     cmp = COMPARE_PAT.search(text)
     if cmp:
@@ -279,7 +318,9 @@ def parse_query(text: str, neighbourhoods: list[str]) -> ParsedQuery:
         q.intents.append("insights")
     if q.host_query or re.search(r"\bhosts?\b|superhost|who (?:lists|hosts)\b", lower):
         q.intents.append("host")
-    if re.search(r"\brecommend|best|popular|top\b|suggest\b", lower):
+    if re.search(r"\brecommend|best|popular|suggest\b", lower) or (
+        re.search(r"\btop\b", lower) and "watchlist" not in q.intents
+    ):
         q.intents.append("recommend")
     if re.search(r"\bshow|find|search|look for\b", lower) or (
         re.search(r"\blisting|apartment|room|stay|place\b", lower)
@@ -305,6 +346,16 @@ def parse_query(text: str, neighbourhoods: list[str]) -> ParsedQuery:
     if "recommend" in q.intents and "search" in q.intents:
         if not re.search(r"\bshow|find|search|look for\b", lower):
             q.intents = [i for i in q.intents if i != "search"]
+
+    # Prefer specialised listing intents over generic search
+    if "deal" in q.intents and "search" in q.intents:
+        q.intents = [i for i in q.intents if i != "search"]
+    if "watchlist" in q.intents and "search" in q.intents:
+        q.intents = [i for i in q.intents if i != "search"]
+    if "guide" in q.intents and "search" in q.intents and not re.search(r"\bfind|search|look for\b", lower):
+        q.intents = [i for i in q.intents if i != "search"]
+    if "explain" in q.intents and "search" in q.intents:
+        q.intents = [i for i in q.intents if i != "search"]
 
     # Confidence heuristic
     signals = sum(

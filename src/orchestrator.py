@@ -55,9 +55,11 @@ class Orchestrator:
             conversation={
                 "last_listing_ids": conversation.last_listing_ids,
                 "last_neighbourhoods": conversation.last_neighbourhoods,
+                "watchlist": conversation.watchlist,
                 "turn": conversation.turn,
             },
         )
+        board.flags["watchlist"] = list(conversation.watchlist)
         board.add(self.planner.explain(parsed, plan))
 
         for name in plan:
@@ -74,8 +76,10 @@ class Orchestrator:
         board.add(self.agents["synthesize"].run(self.catalog, parsed, board))
 
         conversation.remember_turn(board)
+        # Persist watchlist even when remember_turn got filters-only updates
+        if "watchlist" in board.flags and isinstance(board.flags["watchlist"], list):
+            conversation.watchlist = list(board.flags["watchlist"])
         if parsed.help_requested and not parsed.filters.as_dict():
-            # keep prior filters on pure help
             conversation.filters = active_memory
 
         return OrchestratorResponse(
@@ -134,7 +138,9 @@ def _should_inherit(parsed: ParsedQuery) -> bool:
         return False
     if parsed.want_similar:
         return True
+    if parsed.watchlist_action or parsed.explain_id is not None:
+        return True
     words = parsed.raw.split()
     return len(words) <= 8 and not has_new_scope and any(
-        i in parsed.intents for i in ("search", "recommend", "budget", "similar")
+        i in parsed.intents for i in ("search", "recommend", "budget", "similar", "deal", "guide")
     )

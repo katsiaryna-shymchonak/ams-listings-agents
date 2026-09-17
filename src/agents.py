@@ -45,18 +45,22 @@ class HelpAgent:
             "| insights | Market stats |\n"
             "| compare | Side-by-side neighbourhoods |\n"
             "| budget | Trip cost planning |\n"
+            "| deal | Below-median bargains |\n"
+            "| guide | Neighbourhood primer |\n"
+            "| explain | Why a listing ranks |\n"
+            "| watchlist | Save / show pinned ids |\n"
             "| host | Host / license profiles |\n"
             "| similar | Alternatives to last shortlist |\n"
             "| fallback | Relax filters when empty |\n"
             "| critique | Quality review |\n"
             "| synthesize | Final briefing |\n\n"
             "Examples:\n"
-            "- `Find a canal apartment in De Pijp under 300 euros for 3 nights`\n"
+            "- `Find deals in De Pijp under 280 euros`\n"
+            "- `Guide to Westerpark`\n"
+            "- `save top` then `show watchlist`\n"
+            "- `explain 28871`\n"
             "- `Compare De Pijp and Westerpark`\n"
-            "- `Plan a 4-night trip with total budget 900`\n"
-            "- `Recommend top 5 scored private rooms near the center`\n"
-            "- `similar` after a search\n"
-            "- `reset` to clear memory"
+            "- `Plan a 4-night trip with total budget 900`"
         )
         return AgentResult(agent=self.name, title="How to use", markdown=md, stage="specialist")
 
@@ -416,6 +420,195 @@ class SimilarAgent:
         )
 
 
+class DealAgent:
+    name = "deal"
+
+    def run(self, catalog: Catalog, query: ParsedQuery, board: Blackboard | None = None) -> AgentResult:
+        nights = query.filters.trip_nights
+        rows, total = catalog.find_deals(query.filters)
+        if nights and not rows.empty:
+            rows = catalog.attach_stay_cost(rows, nights)
+        shown = display_columns(rows, nights=nights)
+        empty = rows.empty
+        if empty:
+            md = (
+                "No below-median deals matched these filters. "
+                "Try widening the neighbourhood or raising the price cap."
+            )
+        else:
+            avg_disc = float(rows["discount_pct"].mean()) if "discount_pct" in rows.columns else 0
+            md = (
+                f"Deal hunter found **{total}** listings under their neighbourhood median "
+                f"(showing **{len(rows)}**, avg discount **{avg_disc:.0f}%**).\n"
+                f"Filters: `{query.filters.as_dict() or 'none'}`.\n\n"
+                + "\n".join(highlight_lines(rows, nights=nights))
+            )
+        return AgentResult(
+            agent=self.name,
+            title="Deal hunter",
+            markdown=md,
+            table=shown if not shown.empty else None,
+            map_points=_map_points(rows),
+            extras={"match_count": total, "empty": empty, "listing_ids": _listing_ids(rows)},
+            stage="specialist",
+        )
+
+
+class GuideAgent:
+    name = "guide"
+
+    def run(self, catalog: Catalog, query: ParsedQuery, board: Blackboard | None = None) -> AgentResult:
+        from .guides import AREA_GUIDES, guide_for
+
+        neigh = query.filters.neighbourhood
+        if not neigh and query.compare_targets:
+            neigh = query.compare_targets[0]
+        if not neigh and board and board.conversation.get("last_neighbourhoods"):
+            neigh = board.conversation["last_neighbourhoods"][0]
+
+        guide = guide_for(neigh)
+        stats = catalog.neighbourhood_stats(neigh) if neigh else catalog.neighbourhood_stats()
+        if neigh and guide:
+            row = stats.iloc[0] if not stats.empty else None
+            nearby = catalog.nearby_neighbourhoods(neigh, k=3)
+            near_txt = ", ".join(f"{n} ({km}km)" for n, km in nearby)
+            md = (
+                f"### {neigh}\n"
+                f"**Vibe:** {guide['vibe']}\n\n"
+                f"**Good for:** {guide['good_for']}\n\n"
+                f"**Watch out:** {guide['watch_out']}\n\n"
+            )
+            if row is not None:
+                md += (
+                    f"Dataset snapshot: {int(row['listings'])} listings, "
+                    f"median {_fmt_price(row['median_price'])}, "
+                    f"available {int(row['available'])}.\n"
+                    f"Nearby: {near_txt}."
+                )
+            chart = catalog.price_histogram(neigh)
+            return AgentResult(
+                agent=self.name,
+                title="Neighbourhood guide",
+                markdown=md,
+                table=stats,
+                chart=chart if not chart.empty else None,
+                chart_kind="bar",
+                stage="specialist",
+            )
+
+        # City overview of covered guides
+        lines = [f"- **{name}**: {meta['vibe']}" for name, meta in AREA_GUIDES.items()]
+        md = (
+            "Pick a neighbourhood for a primer, e.g. `guide to De Pijp` or `guide to Westerpark`.\n\n"
+            "Covered areas:\n" + "\n".join(lines)
+        )
+        return AgentResult(agent=self.name, title="Neighbourhood guide", markdown=md, stage="specialist")
+
+
+class ExplainAgent:
+    name = "explain"
+
+    def run(self, catalog: Catalog, query: ParsedQuery, board: Blackboard | None = None) -> AgentResult:
+        listing_id = query.explain_id
+        if listing_id is None and board:
+            ids = board.shortlist_ids or board.conversation.get("last_listing_ids") or []
+            if ids:
+                listing_id = int(ids[0])
+        if listing_id is None:
+            return AgentResult(
+                agent=self.name,
+                title="Explain listing",
+                markdown="Pass an id (`explain 28871`) or run a search first and say `explain top`.",
+                stage="specialist",
+            )
+        info = catalog.explain_listing(listing_id)
+        if not info:
+            return AgentResult(
+                agent=self.name,
+                title="Explain listing",
+                markdown=f"Listing **{listing_id}** not found in the dataset.",
+                stage="specialist",
+            )
+        reasons = "\n".join(f"- {r}" for r in info["reasons"])
+        near = ", ".join(f"{n} ({km}km)" for n, km in info["nearby"]) or "n/a"
+        md = (
+            f"**{info['name']}** (`{info['id']}`)\n"
+            f"- {info['neighbourhood']} · {info['room_type']} · host {info['host_name']}\n"
+            f"- Price {_fmt_price(info['price'])}/night vs area median {_fmt_price(info['neigh_median'])}\n"
+            f"- Composite score **{info['score']:.3f}** · reviews {info['reviews']} · "
+            f"availability {info['availability_365']}\n"
+            f"- Nearby: {near}\n\n"
+            f"Why it surfaces:\n{reasons}"
+        )
+        shown = display_columns(info["row"])
+        return AgentResult(
+            agent=self.name,
+            title="Explain listing",
+            markdown=md,
+            table=shown,
+            map_points=_map_points(info["row"]),
+            extras={"listing_ids": [listing_id]},
+            stage="specialist",
+        )
+
+
+class WatchlistAgent:
+    name = "watchlist"
+
+    def run(self, catalog: Catalog, query: ParsedQuery, board: Blackboard | None = None) -> AgentResult:
+        current = list((board.conversation.get("watchlist") if board else None) or [])
+        action = query.watchlist_action or "show"
+
+        if action == "clear":
+            current = []
+            md = "Watchlist cleared."
+        elif action == "save":
+            for lid in query.watchlist_ids:
+                if lid not in current:
+                    current.append(lid)
+            md = f"Saved ids `{query.watchlist_ids}`. Watchlist now has **{len(current)}** listings."
+        elif action == "save_top":
+            seeds = []
+            if board and board.shortlist_ids:
+                seeds = board.shortlist_ids[:3]
+            elif board and board.conversation.get("last_listing_ids"):
+                seeds = list(board.conversation["last_listing_ids"][:3])
+            if not seeds:
+                md = "Nothing to pin yet — run a search/recommend/deal first, then `save top`."
+            else:
+                for lid in seeds:
+                    if lid not in current:
+                        current.append(lid)
+                md = f"Pinned top shortlist ids `{seeds}`. Watchlist size **{len(current)}**."
+        else:
+            md = f"Watchlist has **{len(current)}** listings."
+
+        if board is not None:
+            board.flags["watchlist"] = current
+
+        rows = catalog.get_by_ids(current)
+        nights = query.filters.trip_nights
+        if not rows.empty:
+            rows = catalog.attach_score(rows)
+            if nights:
+                rows = catalog.attach_stay_cost(rows, nights)
+        shown = display_columns(rows, nights=nights) if not rows.empty else None
+        if rows.empty and action == "show":
+            md += " Use `save top` after a search, or `save 28871`."
+        elif not rows.empty:
+            md += "\n\n" + "\n".join(highlight_lines(rows, nights=nights))
+
+        return AgentResult(
+            agent=self.name,
+            title="Watchlist",
+            markdown=md,
+            table=shown,
+            map_points=_map_points(rows) if not rows.empty else None,
+            extras={"watchlist": current, "listing_ids": current[: query.filters.limit]},
+            stage="specialist",
+        )
+
+
 class FallbackAgent:
     name = "fallback"
 
@@ -540,13 +733,19 @@ class SynthesizeAgent:
         if board and board.shortlist_ids:
             parts.append(
                 f"Shortlist ids remembered for follow-ups: `{board.shortlist_ids[:8]}`. "
-                "Ask for `similar` to expand."
+                "Ask for `similar`, `save top`, or `explain top`."
             )
+        watchlist = board.flags.get("watchlist") if board else None
+        if not watchlist and board:
+            watchlist = board.conversation.get("watchlist")
+        if watchlist:
+            parts.append(f"Watchlist ({len(watchlist)}): `{watchlist[:10]}`.")
         parts.append(f"Parse confidence: **{query.confidence:.0%}**.")
         return AgentResult(
             agent=self.name,
             title="Synthesized answer",
             markdown="\n\n".join(parts),
+            extras={"briefing": "\n\n".join(parts)},
             stage="synthesize",
         )
 
@@ -559,6 +758,10 @@ AGENT_REGISTRY: dict[str, Any] = {
     "compare": CompareAgent(),
     "recommend": RecommendAgent(),
     "budget": BudgetAgent(),
+    "deal": DealAgent(),
+    "guide": GuideAgent(),
+    "explain": ExplainAgent(),
+    "watchlist": WatchlistAgent(),
     "host": HostAgent(),
     "similar": SimilarAgent(),
     "fallback": FallbackAgent(),
